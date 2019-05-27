@@ -5,7 +5,7 @@ import logging
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
-fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
+fh = logging.FileHandler("logs.log", encoding="utf-8")
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
 log.addHandler(fh)
@@ -28,7 +28,7 @@ def main():
 		allvalues = sheet.get_all_values()
 		if len(allvalues) > 1:
 			for index, item in enumerate(allvalues[1:]):
-				if len(item) > 3:
+				if item[0] > 5 and item[1] > 5 and item[2] > 2 and item[3] > 2:
 					event = f'{item[0]} - {item[1]}'
 					if event not in alex_line:
 						alex_line[event] = {
@@ -39,10 +39,10 @@ def main():
 							'isFound': False}
 						log.info(f'Got new event row: "{event}"')
 						log.info(f'Alex Line Dict:\n{alex_line}')
-				else:
-					log.warning(f'Got not fully filled row: {item}')
 
-		else:
+		elif len(allvalues) < 0:
 			log.warning('Got fully empty sheet')
+
+# TODO
 
 main()
