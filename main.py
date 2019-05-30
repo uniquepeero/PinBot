@@ -100,12 +100,12 @@ class Pinnacle:
 if __name__ == '__main__':
 	try:
 		log.info('Started')
-		pinn = Pinnacle()
+		pin = Pinnacle()
 
-		#pinn.find_sport_tennis(pinn.lines_sports())
+		#log.debug(pin.find_sport_tennis(pin.lines_sports()))
 		tennis = 33
-		pinn.lines_fixtures(tennis)
-		#pinn.lines_odds(tennis)
+		line = pin.lines_fixtures(tennis)
+		odds = pin.lines_odds(tennis)
 
 	except Exception:
 		log.error(f'Main got: ', exc_info=True)
