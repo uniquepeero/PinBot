@@ -6,6 +6,7 @@ import os
 from time import sleep
 from pprint import pformat
 from fuzzywuzzy import fuzz
+from math import log as LOG
 
 
 log = logging.getLogger(__name__)
@@ -128,7 +129,6 @@ class Pinnacle:
 	def check_exists(self, predict, current):
 		if current:
 			for league in current['league']:
-				league_name = league['name']
 				for event in league['events']:
 					for alexevent in predict:
 						c_h = event['home']
@@ -138,11 +138,53 @@ class Pinnacle:
 
 						if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
 							(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
-								('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
+							('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
+							if fuzz.token_sort_ratio(c_h, p_1) < 70:
+								alexevent['p1'] = c_h
+								alexevent['p2'] = c_a
+								alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
 							alexevent['isfound'] = True
-							alexevent['league'] = league_name
+							alexevent['league'] = league['name']
+							alexevent['league_id'] = league['id']
 							alexevent['id'] = event['id']
 							log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league_name}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
+
+	def check_odds(self, predict, odds):
+		if odds:
+			for league in odds['leagues']:
+				for event in predict:
+					if event['isfound'] and event['league_id'] == league['id']:
+						for event_odds in league['events']:
+							if event_odds['id'] == event['id']:
+								for period in event_odds['periods']:
+									if period['number'] == 0 and 'moneyline' in period.keys(): # ПРОВЕРИТЬ NUMBER == 0
+										if 'home_found' not in event['odds'].keys():
+											event['odds']['home_found'] = period['moneyline']['home']
+											event['odds']['away_found'] = period['moneyline']['away']
+											log.debug(f'Found odds: {event}')
+										event['odds']['home'] = period['moneyline']['home']
+										event['odds']['away'] = period['moneyline']['away']
+										if period['moneyline']['home'] - event['odds']['home'] >= 0.01:
+											event['odds']['value'] = True
+											event['odds']['valueplayer'] = 'home'
+											log.debug(f'Found value {event}')
+										if period['moneyline']['away'] - event['odds']['away'] >= 0.01:
+											event['odds']['value'] = True
+											event['odds']['valueplayer'] = 'away'
+											log.debug(f'Found value {event}')
+										if 'spreads' in period.keys():
+											hdp = period['spreads'][0]['hdp']
+											if (hdp < 0 and hdp <= 2.0) or (hdp > 0 and hdp >= 2.0):
+												event['hdp_dict'] = period['spreads'][0]
+												log.debug(f'Found Handicap in:\n{event}')
+
+
+	def placebet(self):
+		pass
+
+	def stakeamount(self, bank, odds):
+		return round((bank * LOG(1 - (1 / (odds / (1 + 0.04))), 10 ** -40)), 1)
+
 
 
 if __name__ == '__main__':
