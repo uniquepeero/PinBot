@@ -3,10 +3,13 @@ import json
 import configparser
 import logging
 import os
+import gspread
+import datetime
 from time import sleep
 from pprint import pformat
 from fuzzywuzzy import fuzz
 from math import log as LOG
+from oauth2client.service_account import ServiceAccountCredentials
 
 
 log = logging.getLogger(__name__)
@@ -15,6 +18,49 @@ fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
 log.addHandler(fh)
+
+class Sheets:
+	sheet = None
+
+	def __init__(self):
+		try:
+			log.info('Connecting to Google Sheets...')
+			scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+			creds = ServiceAccountCredentials.from_json_keyfile_name('secret.json', scope)
+			client = gspread.authorize(creds)
+			self.sheet = client.open('Pinn Line').sheet1
+			log.info('Successfuly connected to Google Sheet')
+		except:
+			log.error('GSheets connect error: ', exc_info=True)
+
+	def getvalues(self):
+		if self.sheet:
+			allvalues = self.sheet.get_all_values()
+			if len(allvalues) > 1:
+				eventslist = []
+				for event in alexline:
+					eventslist.append(event['event'])
+
+				for index, item in enumerate(allvalues[1:]):
+					if item[0] and len(item[0]) > 3 and item[1] and len(item[1]) > 3 and \
+						item[2] and len(item[2]) > 0 and item[3] and len(item[3]) > 0:
+
+						if f'{item[0]} - {item[1]}' not in eventslist:
+							alexline.append({
+								'event': f'{item[0]} - {item[1]}',
+								'p1': item[0],
+								'p2': item[1],
+								'p1_odds': item[2],
+								'p2_odds': item[3],
+								'isfound': False,
+								'odds': {'value': False},
+								'bet': {'moneyline': False, 'hdp': False}
+							})
+							log.info(f'Got new event row: "{item[0]} - {item[1]} @ {item[2]} - {item[3]}"')
+
+			elif len(allvalues) < 1:
+				log.warning('Got fully empty sheet')
+
 
 class Pinnacle:
 	AUTH = ''
@@ -35,6 +81,7 @@ class Pinnacle:
 		else:
 			log.error('config.ini file not found')
 
+
 	def lines_sports(self):
 		headers = {
 			'Accept': 'application/json',
@@ -45,7 +92,7 @@ class Pinnacle:
 			'https': self.proxydict['main']
 		}
 		try:
-			res = requests.get(f'{self.URL}/v2/sports', headers=headers, proxies=proxies)
+			res = requests.get(f'{self.URL}/v2/sports', headers=headers)
 			if res.status_code == requests.codes.ok:
 				log.debug(f'Lines Sports:\n{res.json()}')
 				return res.json()
@@ -54,10 +101,12 @@ class Pinnacle:
 		except Exception:
 			log.error(f'Get Lines Sports: ', exc_info=True)
 
+
 	def find_sport_tennis(self, sports_list):
 		for index in sports_list['sports']:
 			if index['name'] == 'Tennis':
 				return index['id']
+
 
 	def lines_fixtures(self, sportId, since=None):
 		headers = {
@@ -73,13 +122,17 @@ class Pinnacle:
 		else:
 			since = f'&since={since}'
 		try:
-			res = requests.get(f'{self.URL}/v1/fixtures?sportId={sportId}{since}', headers=headers, proxies=proxies)
+			res = requests.get(f'{self.URL}/v1/fixtures?sportId={sportId}{since}', headers=headers)
 			if res.status_code == requests.codes.ok:
-				return res.json()
+				if res and len(res.content) > 0:
+					return res.json()
+				else:
+					return None
 			else:
 				log.error(f'Lines Fixtures request: Code {res.status_code} / {res.json()}')
 		except Exception:
 			log.error(f'Get Lines Fixtures: ', exc_info=True)
+
 
 	def lines_odds(self, sportId, since=None, eventIds=None):
 		headers = {
@@ -100,13 +153,17 @@ class Pinnacle:
 		else:
 			since = f'&since={since}'
 		try:
-			res = requests.get(f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal{events}{since}', headers=headers, proxies=proxies)
+			res = requests.get(f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal{events}{since}', headers=headers)
 			if res.status_code == requests.codes.ok:
-				return res.json()
+				if res and len(res.content) > 0:
+					return res.json()
+				else:
+					return None
 			else:
 				log.error(f'Lines Parlay Odds request: Code {res.status_code} / {res.json()}')
 		except Exception:
 			log.critical(f'Get Lines Parlay Odds: ', exc_info=True)
+
 
 	def client_balance(self):
 		headers = {
@@ -118,13 +175,14 @@ class Pinnacle:
 			'https': self.proxydict['main']
 		}
 		try:
-			res = requests.get(f'{self.URL}/v1/client/balance', headers=headers, proxies=proxies)
+			res = requests.get(f'{self.URL}/v1/client/balance', headers=headers)
 			if res.status_code == requests.codes.ok:
 				return res.json()
 			else:
 				log.error(f'Client balance request: Code {res.status_code} / {res.json()}')
 		except Exception:
 			log.error(f'Get client balance: ', exc_info=True)
+
 
 	def check_exists(self, predict, current):
 		if current:
@@ -147,7 +205,9 @@ class Pinnacle:
 							alexevent['league'] = league['name']
 							alexevent['league_id'] = league['id']
 							alexevent['id'] = event['id']
+							alexevent['starts'] = event['starts']
 							log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league_name}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
+
 
 	def check_odds(self, predict, odds):
 		if odds:
@@ -164,6 +224,7 @@ class Pinnacle:
 											log.debug(f'Found odds: {event}')
 										event['odds']['home'] = period['moneyline']['home']
 										event['odds']['away'] = period['moneyline']['away']
+										event['odds']['lineid'] = period['lineId']
 										if period['moneyline']['home'] - event['odds']['home'] >= 0.01:
 											event['odds']['value'] = True
 											event['odds']['valueplayer'] = 'home'
@@ -179,8 +240,36 @@ class Pinnacle:
 												log.debug(f'Found Handicap in:\n{event}')
 
 
-	def placebet(self):
-		pass
+	def placebet(self, bank, odds, lineid, eventid, bettype, team, altlineid=None):
+		headers = {
+			'Accept': 'application/json',
+			'Authorization': self.AUTH
+		}
+		payload = {
+			"oddsFormat": "DECIMAL",
+			"acceptBetterLine": True,
+			"stake": float(self.stakeamount(bank, odds)),
+			"winRiskStake": "RISK",
+			"lineId": lineid,
+			"altLineId": altlineid,
+			"fillType": "NORMAL",
+			"sportId": TENNIS,
+			"eventId": eventid,
+			"periodNumber": 0,
+			"betType": "MONEYLINE",
+			"team": team
+		}
+		# ДОПИСАТЬМИтРАРПВ **************
+		try:
+			res = requests.post(f'{self.URL}/v2/bets/straight', headers=headers, data=json.dumps(payload))
+			if res.status_code == requests.codes.ok:
+				return res.json()
+			else:
+				log.error(f'Lines Parlay Odds request: Code {res.status_code} / {res.json()}')
+				return None
+		except Exception:
+			log.critical(f'Get Lines Parlay Odds: ', exc_info=True)
+
 
 	def stakeamount(self, bank, odds):
 		return round((bank * LOG(1 - (1 / (odds / (1 + 0.04))), 10 ** -40)), 1)
@@ -190,36 +279,35 @@ class Pinnacle:
 if __name__ == '__main__':
 	try:
 		log.info('Started')
+		alexline = []
+		sheet = Sheets()
 		pin = Pinnacle()
-		tennis = 33
-		firstline = pin.lines_fixtures(tennis)
-		log.debug(f'First line: {pformat(firstline)}')
-		last = firstline['last']
-		alexline = [
-			{
-				'p1': 'Katerina Siniakova',
-				'p2': 'Madison Keys',
-				'p1_odds': 2.05,
-				'p2_odds': 1.8,
-				'isfound': False
-			},
-			{
-				'p1': 'Belinda Bencic',
-				'p2': 'Donna Vekic',
-				'p1_odds': 1.8,
-				'p2_odds': 2.1,
-				'isfound': False
-			}
-		]
+		TENNIS = 33
+		last = None
+		last_odds = None
+		while True:
+			log.debug('Getting values from Sheets...')
+			sheet.getvalues()
+			log.debug(f'Done. Values: {alexline}')
+			log.debug(f'Getting line since {last}...')
+			line = pin.lines_fixtures(TENNIS, last)
 
-		sleep(5)
-		line = pin.lines_fixtures(tennis, last)
-		log.debug(f'Line with LAST: {pformat(line)}')
-		sleep(5)
-		odds = pin.lines_odds(tennis, 754643274)
-		log.debug(f'Odds: {pformat(odds)}')
-
-		pin.check_exists(alexline, firstline)
+			log.debug(f'Done.')
+			if line:
+				last = line['last']
+				log.debug('Checking exists...')
+				pin.check_exists(alexline, line)
+				log.debug('Done.')
+			log.debug(f'Getting odds since {last_odds}...')
+			odds = pin.lines_odds(TENNIS, last_odds)
+			log.debug(f'Done.')
+			if odds:
+				last_odds = odds['last']
+				log.debug('Checking Odds...')
+				pin.check_odds(alexline, odds)
+				log.debug('Done.')
+			log.debug('Sleep for 5 secs')
+			sleep(5)
 
 
 	except Exception:
