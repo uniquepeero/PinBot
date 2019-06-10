@@ -189,24 +189,25 @@ class Pinnacle:
 			for league in current['league']:
 				for event in league['events']:
 					for alexevent in predict:
-						c_h = event['home']
-						c_a = event['away']
-						p_1 = alexevent['p1']
-						p_2 = alexevent['p2']
+						if not alexevent['isfound']:
+							c_h = event['home']
+							c_a = event['away']
+							p_1 = alexevent['p1']
+							p_2 = alexevent['p2']
 
-						if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
-							(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
-							('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
-							if fuzz.token_sort_ratio(c_h, p_1) < 70:
-								alexevent['p1'] = c_h
-								alexevent['p2'] = c_a
-								alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
-							alexevent['isfound'] = True
-							alexevent['league'] = league['name']
-							alexevent['league_id'] = league['id']
-							alexevent['id'] = event['id']
-							alexevent['starts'] = event['starts']
-							log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league_name}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
+							if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
+								(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
+								('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
+								if fuzz.token_sort_ratio(c_h, p_1) < 70:
+									alexevent['p1'] = c_h
+									alexevent['p2'] = c_a
+									alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
+								alexevent['isfound'] = True
+								alexevent['league'] = league['name']
+								alexevent['league_id'] = league['id']
+								alexevent['id'] = event['id']
+								alexevent['starts'] = event['starts']
+								log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league_name}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
 
 
 	def check_odds(self, predict, odds):
@@ -259,7 +260,7 @@ class Pinnacle:
 			"betType": "MONEYLINE",
 			"team": team
 		}
-		# ДОПИСАТЬМИтРАРПВ **************
+		# ДОПИСАТЬ
 		try:
 			res = requests.post(f'{self.URL}/v2/bets/straight', headers=headers, data=json.dumps(payload))
 			if res.status_code == requests.codes.ok:
@@ -283,16 +284,21 @@ if __name__ == '__main__':
 		sheet = Sheets()
 		pin = Pinnacle()
 		TENNIS = 33
-		last = None
-		last_odds = None
+		last = last_odds = None
+		currTime = checkTime = datetime.datetime.now()
 		while True:
 			log.debug('Getting values from Sheets...')
 			sheet.getvalues()
 			log.debug(f'Done. Values: {alexline}')
+			deltaTime = currTime - checkTime
+			if deltaTime.seconds > 61:
+				last = last_odds = None
+				checkTime = datetime.datetime.now()
 			log.debug(f'Getting line since {last}...')
 			line = pin.lines_fixtures(TENNIS, last)
-
 			log.debug(f'Done.')
+			currTime = datetime.datetime.now()
+
 			if line:
 				last = line['last']
 				log.debug('Checking exists...')
@@ -301,6 +307,7 @@ if __name__ == '__main__':
 			log.debug(f'Getting odds since {last_odds}...')
 			odds = pin.lines_odds(TENNIS, last_odds)
 			log.debug(f'Done.')
+
 			if odds:
 				last_odds = odds['last']
 				log.debug('Checking Odds...')
