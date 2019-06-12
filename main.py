@@ -153,7 +153,8 @@ class Pinnacle:
 		else:
 			since = f'&since={since}'
 		try:
-			res = requests.get(f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal{events}{since}', headers=headers)
+			url = f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal&toCurrencyCode={balancedict["currency"]}{events}{since}'
+			res = requests.get(url, headers=headers)
 			if res.status_code == requests.codes.ok:
 				if res and len(res.content) > 0:
 					return res.json()
@@ -188,26 +189,27 @@ class Pinnacle:
 		if current:
 			for league in current['league']:
 				for event in league['events']:
-					for alexevent in predict:
-						if not alexevent['isfound']:
-							c_h = event['home']
-							c_a = event['away']
-							p_1 = alexevent['p1']
-							p_2 = alexevent['p2']
+					if event['liveStatus'] != 1:
+						for alexevent in predict:
+							if not alexevent['isfound']:
+								c_h = event['home']
+								c_a = event['away']
+								p_1 = alexevent['p1']
+								p_2 = alexevent['p2']
 
-							if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
-								(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
-								('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
-								if fuzz.token_sort_ratio(c_h, p_1) < 70:
-									alexevent['p1'] = c_h
-									alexevent['p2'] = c_a
-									alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
-								alexevent['isfound'] = True
-								alexevent['league'] = league['name']
-								alexevent['league_id'] = league['id']
-								alexevent['id'] = event['id']
-								alexevent['starts'] = event['starts']
-								log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league_name}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
+								if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
+									(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
+									('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
+									if fuzz.token_sort_ratio(c_h, p_1) < 70:
+										alexevent['p1'] = c_h
+										alexevent['p2'] = c_a
+										alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
+									alexevent['isfound'] = True
+									alexevent['league'] = league['name']
+									alexevent['league_id'] = league['id']
+									alexevent['id'] = event['id']
+									alexevent['starts'] = event['starts']
+									log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league["name"]}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
 
 
 	def check_odds(self, predict, odds):
@@ -276,6 +278,26 @@ class Pinnacle:
 		return round((bank * LOG(1 - (1 / (odds / (1 + 0.04))), 10 ** -40)), 1)
 
 
+	def gethometeam(self):
+		headers = {
+			'Accept': 'application/json',
+			'Authorization': self.AUTH
+		}
+		try:
+			res = requests.get(f'{self.URL}/v2/leagues', headers=headers)
+			if res.status_code == requests.codes.ok:
+				r = res.json()
+				d = {}
+				for league in r['leagues']:
+					d[league['id']] = league['homeTeamType']
+				return d
+			else:
+				log.error(f'Get Leagues(hometeam): Code {res.status_code} / {res.json()}')
+				return None
+		except Exception:
+			log.critical(f'Get leagues: ', exc_info=True)
+
+
 
 if __name__ == '__main__':
 	try:
@@ -284,6 +306,11 @@ if __name__ == '__main__':
 		sheet = Sheets()
 		pin = Pinnacle()
 		TENNIS = 33
+		balance = pin.client_balance()
+		balancedict = {'bank': balance['availableBalance'], 'currency': balance['currency']}
+		log.debug(pin.lines_fixtures(TENNIS))
+		log.debug(pin.lines_odds(TENNIS))
+		exit()
 		last = last_odds = None
 		currTime = checkTime = datetime.datetime.now()
 		while True:
