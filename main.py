@@ -306,14 +306,16 @@ if __name__ == '__main__':
 		sheet = Sheets()
 		pin = Pinnacle()
 		TENNIS = 33
-		balance = pin.client_balance()
-		balancedict = {'bank': balance['availableBalance'], 'currency': balance['currency']}
-		log.debug(pin.lines_fixtures(TENNIS))
-		log.debug(pin.lines_odds(TENNIS))
-		exit()
 		last = last_odds = None
-		currTime = checkTime = datetime.datetime.now()
+		currTime = checkTime = balancetimecheck = datetime.datetime.now()
 		while True:
+			# Присваивание банка на день в 6:00 UTC
+			if currTime >= balancetimecheck:
+				balancetimecheck.replace(hour=6, minute=00)
+				balancetimecheck += datetime.timedelta(days=1)
+				balance = pin.client_balance()
+				balancedict = {'bank': balance['availableBalance'], 'currency': balance['currency']}
+
 			log.debug('Getting values from Sheets...')
 			sheet.getvalues()
 			log.debug(f'Done. Values: {alexline}')
