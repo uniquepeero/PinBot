@@ -25,15 +25,16 @@ class Sheets:
 	def __init__(self):
 		try:
 			log.info('Connecting to Google Sheets...')
-			scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-			creds = ServiceAccountCredentials.from_json_keyfile_name('secret.json', scope)
-			client = gspread.authorize(creds)
+			self.scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+			self.creds = ServiceAccountCredentials.from_json_keyfile_name('secret.json', self.scope)
+			self.client = gspread.authorize(self.creds)
 			self.sheet = client.open('Pinn Line').sheet1
 			log.info('Successfuly connected to Google Sheet')
 		except:
 			log.error('GSheets connect error: ', exc_info=True)
 
 	def getvalues(self):
+		if self.creds.access_token_expired: self.client.login()
 		if self.sheet:
 			allvalues = self.sheet.get_all_values()
 			if len(allvalues) > 1:
@@ -43,20 +44,27 @@ class Sheets:
 
 				for index, item in enumerate(allvalues[1:]):
 					if item[0] and len(item[0]) > 3 and item[1] and len(item[1]) > 3 and \
-						item[2] and len(item[2]) > 0 and item[3] and len(item[3]) > 0:
+						item[2] and len(item[2]) > 0 and item[3] and len(item[3]) > 0 and \
+						item[4] and len(item[4]) > 0 and item[5] and len(item[5]) > 0:
 
 						if f'{item[0]} - {item[1]}' not in eventslist:
+							moneyline = item[2] if item[2] != '-' else None
+							if item[3] != '-':
+								hnd1_team = 'home' if item[3][0] == '1' else 'away'
+								hnd1_value
+							handicap2 = item[4] if item[4] != '-' else None
+							total = item[5] if item[5] != '-' else None
 							alexline.append({
 								'event': f'{item[0]} - {item[1]}',
 								'p1': item[0],
 								'p2': item[1],
-								'p1_odds': item[2],
-								'p2_odds': item[3],
+								'moneyline': moneyline,
+								'handicap': {''},
 								'isfound': False,
 								'odds': {'value': False},
 								'bet': {'moneyline': False, 'hdp': False}
 							})
-							log.info(f'Got new event row: "{item[0]} - {item[1]} @ {item[2]} - {item[3]}"')
+							log.info(f'Got new event row: "{item[0]} - {item[1]}"')
 
 			elif len(allvalues) < 1:
 				log.warning('Got fully empty sheet')
@@ -243,7 +251,15 @@ class Pinnacle:
 												log.debug(f'Found Handicap in:\n{event}')
 
 
-	def placebet(self, bank, odds, lineid, eventid, bettype, team, altlineid=None):
+	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None):
+		teams = {
+			'home': 'Team1',
+			'away': 'Team2'
+		}
+		try:
+			if self.gethometeam()[leagueid] != 'Team1': teams['home'], teams['away'] = teams['away'], teams['home']
+		except:
+			log.error('Get home team value in placebet(): ', exc_info=True)
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
@@ -260,7 +276,7 @@ class Pinnacle:
 			"eventId": eventid,
 			"periodNumber": 0,
 			"betType": "MONEYLINE",
-			"team": team
+			"team": teams[team]
 		}
 		# ДОПИСАТЬ
 		try:
