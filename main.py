@@ -48,18 +48,42 @@ class Sheets:
 						item[4] and len(item[4]) > 0 and item[5] and len(item[5]) > 0:
 
 						if f'{item[0]} - {item[1]}' not in eventslist:
-							moneyline = item[2] if item[2] != '-' else None
+							if item[2] != '-':
+								moneyline = 'home' if '1' in item[2] else 'away'
+							else:
+								moneyline = None
+
 							if item[3] != '-':
-								hnd1_team = 'home' if item[3][0] == '1' else 'away'
-								hnd1_value
-							handicap2 = item[4] if item[4] != '-' else None
-							total = item[5] if item[5] != '-' else None
+								team = 'home' if item[3][0] == '1' else 'away'
+								value = item[3][2:]
+								handicap1 = {'team': team,
+								             'value': value}
+							else:
+								handicap1 = None
+
+							if item[4] != '-':
+								team = 'home' if item[3][0] == '1' else 'away'
+								value = item[3][2:]
+								handicap2 = {'team': team,
+								             'value': value}
+							else:
+								handicap2 = None
+
+							if item[5] != '-':
+								dirrection = 'over' if item[5][0].lower() == 'o' else 'under'
+								value = item[2:]
+								total = {'dirrection': dirrection,
+								         'value': value}
+							else:
+								total = None
 							alexline.append({
 								'event': f'{item[0]} - {item[1]}',
 								'p1': item[0],
 								'p2': item[1],
 								'moneyline': moneyline,
-								'handicap': {''},
+								'handicap1': handicap1,
+								'handicap2': handicap2,
+								'total': total,
 								'isfound': False,
 								'odds': {'value': False},
 								'bet': {'moneyline': False, 'hdp': False}
