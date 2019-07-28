@@ -28,7 +28,7 @@ class Sheets:
 			self.scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 			self.creds = ServiceAccountCredentials.from_json_keyfile_name('secret.json', self.scope)
 			self.client = gspread.authorize(self.creds)
-			self.sheet = client.open('Pinn Line').sheet1
+			self.sheet = self.client.open('Pinn Line').sheet1
 			log.info('Successfuly connected to Google Sheet')
 		except:
 			log.error('GSheets connect error: ', exc_info=True)
@@ -49,7 +49,8 @@ class Sheets:
 
 						if f'{item[0]} - {item[1]}' not in eventslist:
 							if item[2] != '-':
-								moneyline = 'home' if '1' in item[2] else 'away'
+								team = 'home' if '1' in item[2] else 'away'
+								moneyline = {'team': team}
 							else:
 								moneyline = None
 
@@ -224,23 +225,12 @@ class Pinnacle:
 					if event['liveStatus'] != 1:
 						for alexevent in predict:
 							if not alexevent['isfound']:
-								c_h = event['home']
-								c_a = event['away']
-								p_1 = alexevent['p1']
-								p_2 = alexevent['p2']
 
-								if (fuzz.token_sort_ratio(c_h, p_1) > 69 or fuzz.token_sort_ratio(c_a, p_1) > 69) and \
-									(fuzz.token_sort_ratio(c_h, p_2) > 69 or fuzz.token_sort_ratio(c_a, p_2) > 69) and \
-									('1.5 Sets' not in c_h and '2.5 Sets' not in c_h): # Убрать это позже и добавить возможность по сетам
-									if fuzz.token_sort_ratio(c_h, p_1) < 70:
-										alexevent['p1'] = c_h
-										alexevent['p2'] = c_a
-										alexevent['p1_odds'], alexevent['p2_odds'] = alexevent['p2_odds'], alexevent['p1_odds']
+								if (event['home'] == alexevent['p1']) and (event['away'] == alexevent['p2']):
 									alexevent['isfound'] = True
 									alexevent['league'] = league['name']
 									alexevent['league_id'] = league['id']
 									alexevent['id'] = event['id']
-									alexevent['starts'] = event['starts']
 									log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league["name"]}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
 
 
@@ -365,7 +355,7 @@ if __name__ == '__main__':
 				checkTime = datetime.datetime.now()
 			log.debug(f'Getting line since {last}...')
 			line = pin.lines_fixtures(TENNIS, last)
-			log.debug(f'Done.')
+			log.debug(f'Done. Fixtures:\n{line}')
 			currTime = datetime.datetime.now()
 
 			if line:
