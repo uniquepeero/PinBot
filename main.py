@@ -6,8 +6,8 @@ import os
 import gspread
 import datetime
 from time import sleep
-from pprint import pformat
-from fuzzywuzzy import fuzz
+#from pprint import pformat
+#from fuzzywuzzy import fuzz
 from math import log as LOG
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -18,6 +18,7 @@ fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
 log.addHandler(fh)
+
 
 class Sheets:
 	sheet = None
@@ -64,7 +65,7 @@ class Sheets:
 
 							if item[4] != '-':
 								team = 'home' if item[3][0] == '1' else 'away'
-								value = item[3][2:]
+								value = item[4][2:]
 								handicap2 = {'team': team,
 								             'value': value}
 							else:
@@ -72,7 +73,7 @@ class Sheets:
 
 							if item[5] != '-':
 								dirrection = 'over' if item[5][0].lower() == 'o' else 'under'
-								value = item[2:]
+								value = item[5][2:]
 								total = {'dirrection': dirrection,
 								         'value': value}
 							else:
@@ -86,13 +87,19 @@ class Sheets:
 								'handicap2': handicap2,
 								'total': total,
 								'isfound': False,
-								'odds': {'value': False},
-								'bet': {'moneyline': False, 'hdp': False}
+								'bet': {
+									'moneyline': False,
+									'handicap1': False,
+									'handicap2': False,
+									'total': False
+								}
 							})
-							log.info(f'Got new event row: "{item[0]} - {item[1]}"')
-
+							log.debug(f'Got new event row: "{item[0]} - {item[1]}"')
+			
 			elif len(allvalues) < 1:
 				log.warning('Got fully empty sheet')
+		#TODO Удалить
+		log.debug(f'AlexLine:\n{alexline}')
 
 
 class Pinnacle:
@@ -242,7 +249,7 @@ class Pinnacle:
 						for event_odds in league['events']:
 							if event_odds['id'] == event['id']:
 								for period in event_odds['periods']:
-									if period['number'] == 0 and 'moneyline' in period.keys(): # ПРОВЕРИТЬ NUMBER == 0
+									if period['number'] == 0 in period.keys(): # ПРОВЕРИТЬ NUMBER == 0
 										if 'home_found' not in event['odds'].keys():
 											event['odds']['home_found'] = period['moneyline']['home']
 											event['odds']['away_found'] = period['moneyline']['away']
@@ -292,7 +299,6 @@ class Pinnacle:
 			"betType": "MONEYLINE",
 			"team": teams[team]
 		}
-		# ДОПИСАТЬ
 		try:
 			res = requests.post(f'{self.URL}/v2/bets/straight', headers=headers, data=json.dumps(payload))
 			if res.status_code == requests.codes.ok:
@@ -365,7 +371,7 @@ if __name__ == '__main__':
 				log.debug('Done.')
 			log.debug(f'Getting odds since {last_odds}...')
 			odds = pin.lines_odds(TENNIS, last_odds)
-			log.debug(f'Done.')
+			log.debug(f'Done. Odds:\n{odds}')
 
 			if odds:
 				last_odds = odds['last']
@@ -380,3 +386,8 @@ if __name__ == '__main__':
 		log.error(f'Main got: ', exc_info=True)
 	finally:
 		log.info('Closed')
+
+#TODO Проверить присвоение AlexLine словаря
+#TODO Просмотреть и сверить отчет odds. Какие там period number, везде ли 0.
+#TODO Присваивать кэфы для нужных событий (if event['moneyline'] and 'moneyline' in period.keys() and ВОЗМОЖНО not  event['bet']['moneyline']
+# Нашли все кэфы - вызываем функцию проставления. В ней дописать сохранение размера ставки
