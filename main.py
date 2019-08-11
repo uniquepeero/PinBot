@@ -64,7 +64,7 @@ class Sheets:
 								handicap1 = None
 
 							if item[4] != '-':
-								team = 'home' if item[3][0] == '1' else 'away'
+								team = 'home' if item[4][0] == '1' else 'away'
 								value = item[4][2:]
 								handicap2 = {'team': team,
 								             'value': value}
@@ -98,8 +98,6 @@ class Sheets:
 			
 			elif len(allvalues) < 1:
 				log.warning('Got fully empty sheet')
-		#TODO Удалить
-		log.debug(f'AlexLine:\n{alexline}')
 
 
 class Pinnacle:
@@ -232,7 +230,6 @@ class Pinnacle:
 					if event['liveStatus'] != 1:
 						for alexevent in predict:
 							if not alexevent['isfound']:
-
 								if (event['home'] == alexevent['p1']) and (event['away'] == alexevent['p2']):
 									alexevent['isfound'] = True
 									alexevent['league'] = league['name']
@@ -250,26 +247,19 @@ class Pinnacle:
 							if event_odds['id'] == event['id']:
 								for period in event_odds['periods']:
 									if period['number'] == 0 in period.keys(): # ПРОВЕРИТЬ NUMBER == 0
-										if 'home_found' not in event['odds'].keys():
-											event['odds']['home_found'] = period['moneyline']['home']
-											event['odds']['away_found'] = period['moneyline']['away']
-											log.debug(f'Found odds: {event}')
-										event['odds']['home'] = period['moneyline']['home']
-										event['odds']['away'] = period['moneyline']['away']
-										event['odds']['lineid'] = period['lineId']
-										if period['moneyline']['home'] - event['odds']['home'] >= 0.01:
-											event['odds']['value'] = True
-											event['odds']['valueplayer'] = 'home'
-											log.debug(f'Found value {event}')
-										if period['moneyline']['away'] - event['odds']['away'] >= 0.01:
-											event['odds']['value'] = True
-											event['odds']['valueplayer'] = 'away'
-											log.debug(f'Found value {event}')
+										if event['moneyline'] and 'moneyline' in period.keys():
+											event['moneyline']['odds'] = period['moneyline'][event['moneyline']['team']]
+											event['moneyline']['lineid'] = period['lineId']
+
 										if 'spreads' in period.keys():
-											hdp = period['spreads'][0]['hdp']
-											if (hdp < 0 and hdp <= 2.0) or (hdp > 0 and hdp >= 2.0):
-												event['hdp_dict'] = period['spreads'][0]
-												log.debug(f'Found Handicap in:\n{event}')
+											event['favorite'] = 'home' if period['spreads'][0]['hdp'][0] == '-' else 'away'
+											if event['handicap1']:
+												if event['handicap1']['team'] == 'home':
+													if event['handicap1']['value'][0] == '-' and event['favorite'] == 'home':
+												else:
+													if event['handicap1']['value'][0] == '-'
+												for hdp in period['spreads']:
+
 
 
 	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None):
@@ -387,7 +377,8 @@ if __name__ == '__main__':
 	finally:
 		log.info('Closed')
 
-#TODO Проверить присвоение AlexLine словаря
+
 #TODO Просмотреть и сверить отчет odds. Какие там period number, везде ли 0.
 #TODO Присваивать кэфы для нужных событий (if event['moneyline'] and 'moneyline' in period.keys() and ВОЗМОЖНО not  event['bet']['moneyline']
 # Нашли все кэфы - вызываем функцию проставления. В ней дописать сохранение размера ставки
+# Если есть parentid - сохранять его (Fixtures). Если есть altline в нужных hdp/points в ответе с odds - сохранять их
