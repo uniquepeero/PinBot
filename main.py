@@ -73,11 +73,12 @@ class Sheets:
 
 							if item[5] != '-':
 								dirrection = 'over' if item[5][0].lower() == 'o' else 'under'
-								value = item[5][2:]
+								value = float(item[5][2:])
 								total = {'dirrection': dirrection,
 								         'value': value}
 							else:
 								total = None
+
 							alexline.append({
 								'event': f'{item[0]} - {item[1]}',
 								'p1': item[0],
@@ -246,31 +247,51 @@ class Pinnacle:
 						for event_odds in league['events']:
 							if event_odds['id'] == event['id']:
 								for period in event_odds['periods']:
-									if period['number'] == 0 in period.keys(): # ПРОВЕРИТЬ NUMBER == 0
+									if period['number'] == 0 in period.keys():
+										event['lineid'] = period['lineId']
+
 										if event['moneyline'] and 'moneyline' in period.keys():
 											event['moneyline']['odds'] = period['moneyline'][event['moneyline']['team']]
-											event['moneyline']['lineid'] = period['lineId']
+
+											self.placebet(balancedict['bank'], event['moneyline']['odds'], event['league_id'], event['lineid'], event['id'], 'MONEYLINE', event['moneyline']['team'])
 
 										if 'spreads' in period.keys():
 											event['favorite'] = 'home' if period['spreads'][0]['hdp'][0] == '-' else 'away'
-											if event['handicap1']:
-												if event['handicap1']['team'] == 'home':
-													if event['handicap1']['value'][0] == '-' and event['favorite'] == 'home':
-												else:
-													if event['handicap1']['value'][0] == '-'
-												for hdp in period['spreads']:
+											for handicap in ['handicap1', 'handicap2']:
+												if event[handicap]:
+													if event[handicap]['team'] != event['favorite']:
+														event[handicap]['fvalue'] = float(event[handicap]['value'].replace('-', '') if '-' in event[handicap]['value'] else '-' + event[handicap]['value'])
+														for hdp in period['spreads']:
+															if hdp['hdp'] == event['handicap1']['fvalue']:
+																event[handicap]['odds'] = hdp[event[handicap]['team']]
+																if 'altLineId' in hdp.keys():
+																	event[handicap]['altlineid'] = hdp['altLineId']
+																else:
+																	event[handicap]['altlineid'] = None
+																self.placebet(balancedict['bank'], event[handicap]['odds'], event['league_id'], event['lineid'], event['id'], 'SPREAD', event[handicap]['team'], event[handicap]['altlineid'])
+
+										if 'totals' in period.keys():
+											for total in period['totals']:
+												if total['points'] == event['total']['value']:
+													event['total']['odds'] = total[event['total']['dirrection']]
+													if 'altLineId' in total.keys():
+														event['total']['altlineid'] = total['altLineId']
+													else:
+														event['total']['altlineid'] = None
+													self.placebet(balancedict['bank'], event['total']['odds'], event['league_id'], event['lineid'], event['id'], 'TOTAL_POINTS', None, event['total']['altlineid'], event['total']['dirrection'].upper())
 
 
 
-	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None):
+	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None, side=None):
 		teams = {
 			'home': 'Team1',
 			'away': 'Team2'
 		}
 		try:
 			if self.gethometeam()[leagueid] != 'Team1': teams['home'], teams['away'] = teams['away'], teams['home']
-		except:
+		except Exception:
 			log.error('Get home team value in placebet(): ', exc_info=True)
+
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
@@ -286,8 +307,9 @@ class Pinnacle:
 			"sportId": TENNIS,
 			"eventId": eventid,
 			"periodNumber": 0,
-			"betType": "MONEYLINE",
-			"team": teams[team]
+			"betType": bettype,
+			"team": teams[team],
+			"side": side
 		}
 		try:
 			res = requests.post(f'{self.URL}/v2/bets/straight', headers=headers, data=json.dumps(payload))
