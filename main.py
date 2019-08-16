@@ -247,30 +247,33 @@ class Pinnacle:
 						for event_odds in league['events']:
 							if event_odds['id'] == event['id']:
 								for period in event_odds['periods']:
-									if period['number'] == 0 in period.keys():
+									if period['number'] == 0:
 										event['lineid'] = period['lineId']
 
-										if event['moneyline'] and 'moneyline' in period.keys():
+										if event['moneyline'] and 'moneyline' in period.keys() and not event['bet']['moneyline']:
 											event['moneyline']['odds'] = period['moneyline'][event['moneyline']['team']]
-
-											self.placebet(balancedict['bank'], event['moneyline']['odds'], event['league_id'], event['lineid'], event['id'], 'MONEYLINE', event['moneyline']['team'])
+											bet = self.placebet(balancedict['bank'], event['moneyline']['odds'], event['league_id'], event['lineid'], event['id'], 'MONEYLINE', event['moneyline']['team'])
+											event['bet']['moneyline'] = True
+											log.info(bet)
 
 										if 'spreads' in period.keys():
-											event['favorite'] = 'home' if period['spreads'][0]['hdp'][0] == '-' else 'away'
+											event['favorite'] = 'home' if period['spreads'][0]['hdp'] < 0 else 'away'
 											for handicap in ['handicap1', 'handicap2']:
-												if event[handicap]:
+												if event[handicap] and not event['bet'][handicap]:
 													if event[handicap]['team'] != event['favorite']:
 														event[handicap]['fvalue'] = float(event[handicap]['value'].replace('-', '') if '-' in event[handicap]['value'] else '-' + event[handicap]['value'])
 														for hdp in period['spreads']:
-															if hdp['hdp'] == event['handicap1']['fvalue']:
+															if hdp['hdp'] == event[handicap]['fvalue']:
 																event[handicap]['odds'] = hdp[event[handicap]['team']]
 																if 'altLineId' in hdp.keys():
 																	event[handicap]['altlineid'] = hdp['altLineId']
 																else:
 																	event[handicap]['altlineid'] = None
-																self.placebet(balancedict['bank'], event[handicap]['odds'], event['league_id'], event['lineid'], event['id'], 'SPREAD', event[handicap]['team'], event[handicap]['altlineid'])
+																bet = self.placebet(balancedict['bank'], event[handicap]['odds'], event['league_id'], event['lineid'], event['id'], 'SPREAD', event[handicap]['team'], event[handicap]['altlineid'])
+																event['bet'][handicap] = True
+																log.info(bet)
 
-										if 'totals' in period.keys():
+										if 'totals' in period.keys() and not event['bet']['total']:
 											for total in period['totals']:
 												if total['points'] == event['total']['value']:
 													event['total']['odds'] = total[event['total']['dirrection']]
@@ -278,19 +281,23 @@ class Pinnacle:
 														event['total']['altlineid'] = total['altLineId']
 													else:
 														event['total']['altlineid'] = None
-													self.placebet(balancedict['bank'], event['total']['odds'], event['league_id'], event['lineid'], event['id'], 'TOTAL_POINTS', None, event['total']['altlineid'], event['total']['dirrection'].upper())
-
+													bet = self.placebet(balancedict['bank'], event['total']['odds'], event['league_id'], event['lineid'], event['id'], 'TOTAL_POINTS', None, event['total']['altlineid'], event['total']['dirrection'].upper())
+													event['bet']['total'] = True
+													log.info(bet)
 
 
 	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None, side=None):
 		teams = {
 			'home': 'Team1',
-			'away': 'Team2'
+			'away': 'Team2',
+			'empty': None
 		}
-		try:
-			if self.gethometeam()[leagueid] != 'Team1': teams['home'], teams['away'] = teams['away'], teams['home']
-		except Exception:
-			log.error('Get home team value in placebet(): ', exc_info=True)
+		if team is not None:
+			try:
+				if self.gethometeam()[leagueid] != 'Team1': teams['home'], teams['away'] = teams['away'], teams['home']
+			except Exception:
+				log.error('Get home team value in placebet(): ', exc_info=True)
+		else: team = 'empty'
 
 		headers = {
 			'Accept': 'application/json',
@@ -311,15 +318,16 @@ class Pinnacle:
 			"team": teams[team],
 			"side": side
 		}
+		log.debug(f'{payload}')
 		try:
 			res = requests.post(f'{self.URL}/v2/bets/straight', headers=headers, data=json.dumps(payload))
 			if res.status_code == requests.codes.ok:
 				return res.json()
 			else:
-				log.error(f'Lines Parlay Odds request: Code {res.status_code} / {res.json()}')
+				log.error(f'Bet request: Code {res.status_code} / {res.json()}')
 				return None
 		except Exception:
-			log.critical(f'Get Lines Parlay Odds: ', exc_info=True)
+			log.critical(f'Bet Odds: ', exc_info=True)
 
 
 	def stakeamount(self, bank, odds):
@@ -332,7 +340,7 @@ class Pinnacle:
 			'Authorization': self.AUTH
 		}
 		try:
-			res = requests.get(f'{self.URL}/v2/leagues', headers=headers)
+			res = requests.get(f'{self.URL}/v2/leagues?sportId={TENNIS}', headers=headers)
 			if res.status_code == requests.codes.ok:
 				r = res.json()
 				d = {}
@@ -373,7 +381,7 @@ if __name__ == '__main__':
 				checkTime = datetime.datetime.now()
 			log.debug(f'Getting line since {last}...')
 			line = pin.lines_fixtures(TENNIS, last)
-			log.debug(f'Done. Fixtures:\n{line}')
+			# log.debug(f'Done. Fixtures:\n{line}')
 			currTime = datetime.datetime.now()
 
 			if line:
@@ -383,7 +391,7 @@ if __name__ == '__main__':
 				log.debug('Done.')
 			log.debug(f'Getting odds since {last_odds}...')
 			odds = pin.lines_odds(TENNIS, last_odds)
-			log.debug(f'Done. Odds:\n{odds}')
+			# log.debug(f'Done. Odds:\n{odds}')
 
 			if odds:
 				last_odds = odds['last']
@@ -399,7 +407,7 @@ if __name__ == '__main__':
 	finally:
 		log.info('Closed')
 
-
+# TODO переписать except
 #TODO Просмотреть и сверить отчет odds. Какие там period number, везде ли 0.
 #TODO Присваивать кэфы для нужных событий (if event['moneyline'] and 'moneyline' in period.keys() and ВОЗМОЖНО not  event['bet']['moneyline']
 # Нашли все кэфы - вызываем функцию проставления. В ней дописать сохранение размера ставки
