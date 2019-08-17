@@ -19,10 +19,10 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
 log.addHandler(fh)
 
+CHAT = ''
+BOTKEY = ''
 
 class Sheets:
-	sheet = None
-
 	def __init__(self):
 		try:
 			log.info('Connecting to Google Sheets...')
@@ -45,61 +45,33 @@ class Sheets:
 
 				for index, item in enumerate(allvalues[1:]):
 					if item[0] and len(item[0]) > 3 and item[1] and len(item[1]) > 3 and \
-						item[2] and len(item[2]) > 0 and item[3] and len(item[3]) > 0 and \
-						item[4] and len(item[4]) > 0 and item[5] and len(item[5]) > 0:
+						item[2] and len(item[2]) > 0 and item[3] and len(item[3]) > 0:
 
 						if f'{item[0]} - {item[1]}' not in eventslist:
-							if item[2] != '-':
-								team = 'home' if '1' in item[2] else 'away'
-								moneyline = {'team': team}
-							else:
-								moneyline = None
-
-							if item[3] != '-':
-								team = 'home' if item[3][0] == '1' else 'away'
-								value = item[3][2:]
-								handicap1 = {'team': team,
-								             'value': value}
-							else:
-								handicap1 = None
-
-							if item[4] != '-':
-								team = 'home' if item[4][0] == '1' else 'away'
-								value = item[4][2:]
-								handicap2 = {'team': team,
-								             'value': value}
-							else:
-								handicap2 = None
-
-							if item[5] != '-':
-								dirrection = 'over' if item[5][0].lower() == 'o' else 'under'
-								value = float(item[5][2:])
-								total = {'dirrection': dirrection,
-								         'value': value}
-							else:
-								total = None
+							if '1' in item[2]: moneyline = 'home'
+							elif '2' in item[2]: moneyline = 'away'
+							else: moneyline = None
+							good_odds = item[3]
+							if ',' in good_odds: good_odds.replace(',', '.')
 
 							alexline.append({
 								'event': f'{item[0]} - {item[1]}',
 								'p1': item[0],
 								'p2': item[1],
 								'moneyline': moneyline,
-								'handicap1': handicap1,
-								'handicap2': handicap2,
-								'total': total,
+								'good_odds': float(good_odds),
 								'isfound': False,
-								'bet': {
-									'moneyline': False,
-									'handicap1': False,
-									'handicap2': False,
-									'total': False
-								}
+								'sended': False,
+								'index': index + 2
 							})
 							log.debug(f'Got new event row: "{item[0]} - {item[1]}"')
 			
 			elif len(allvalues) < 1:
 				log.warning('Got fully empty sheet')
 
+
+	def deleterow(self, index):
+		return self.sheet.delete_row(index)
 
 class Pinnacle:
 	AUTH = ''
@@ -110,7 +82,10 @@ class Pinnacle:
 		if os.path.isfile('config.ini'):
 			config.read('config.ini')
 			try:
+				global CHAT, BOTKEY
 				self.AUTH = config['Pinnacle']['KEY']
+				CHAT = config['TG']['chat']
+				BOTKEY = config['TG']['API']
 			except Exception as e:
 				log.error(f'[Pinnacle] "KEY" constant with auth key not found: {e}' )
 			try:
@@ -185,14 +160,13 @@ class Pinnacle:
 		if eventIds is None:
 			events = ''
 		else:
-			# Сюда добавить список
 			events = f'&eventIds=[{eventIds}]'
 		if since is None:
 			since = ''
 		else:
 			since = f'&since={since}'
 		try:
-			url = f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal&toCurrencyCode={balancedict["currency"]}{events}{since}'
+			url = f'{self.URL}/v1/odds?sportId={sportId}&oddsFormat=Decimal{events}{since}'
 			res = requests.get(url, headers=headers)
 			if res.status_code == requests.codes.ok:
 				if res and len(res.content) > 0:
@@ -230,16 +204,19 @@ class Pinnacle:
 				for event in league['events']:
 					if event['liveStatus'] != 1:
 						for alexevent in predict:
-							if not alexevent['isfound']:
-								if (event['home'] == alexevent['p1']) and (event['away'] == alexevent['p2']):
-									alexevent['isfound'] = True
-									alexevent['league'] = league['name']
-									alexevent['league_id'] = league['id']
-									alexevent['id'] = event['id']
-									log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league["name"]}\nPlayers: {event["home"]} - {event["away"]}\n{predict}')
+							if not alexevent['isfound'] and 'starts' in event.keys() and event['home'] == alexevent['p1'] and\
+									event['away'] == alexevent['p2']:
+								starts = event['starts']
+								alexevent['isfound'] = True
+								alexevent['league'] = league['name']
+								alexevent['league_id'] = league['id']
+								alexevent['id'] = event['id']
+								alexevent['starts'] = datetime.datetime.strptime(event['starts'], '%Y-%m-%dT%H:%M:%SZ')
+								log.debug(f'FOUND!\nID: {event["id"]}\nLeague: {league["name"]}\nPlayers: {event["home"]} - {event["away"]}\n{predict}\nStarts: {alexevent["starts"]}')
 
 
 	def check_odds(self, predict, odds):
+		msg = """"""
 		if odds:
 			for league in odds['leagues']:
 				for event in predict:
@@ -250,41 +227,28 @@ class Pinnacle:
 									if period['number'] == 0:
 										event['lineid'] = period['lineId']
 
-										if event['moneyline'] and 'moneyline' in period.keys() and not event['bet']['moneyline']:
-											event['moneyline']['odds'] = period['moneyline'][event['moneyline']['team']]
-											bet = self.placebet(balancedict['bank'], event['moneyline']['odds'], event['league_id'], event['lineid'], event['id'], 'MONEYLINE', event['moneyline']['team'])
-											event['bet']['moneyline'] = True
-											log.info(bet)
+										if event['moneyline'] and 'moneyline' in period.keys() \
+												and period['moneyline'][event['moneyline']] >= event['good_odds']:
 
-										if 'spreads' in period.keys():
-											event['favorite'] = 'home' if period['spreads'][0]['hdp'] < 0 else 'away'
-											for handicap in ['handicap1', 'handicap2']:
-												if event[handicap] and not event['bet'][handicap]:
-													if event[handicap]['team'] != event['favorite']:
-														event[handicap]['fvalue'] = float(event[handicap]['value'].replace('-', '') if '-' in event[handicap]['value'] else '-' + event[handicap]['value'])
-														for hdp in period['spreads']:
-															if hdp['hdp'] == event[handicap]['fvalue']:
-																event[handicap]['odds'] = hdp[event[handicap]['team']]
-																if 'altLineId' in hdp.keys():
-																	event[handicap]['altlineid'] = hdp['altLineId']
-																else:
-																	event[handicap]['altlineid'] = None
-																bet = self.placebet(balancedict['bank'], event[handicap]['odds'], event['league_id'], event['lineid'], event['id'], 'SPREAD', event[handicap]['team'], event[handicap]['altlineid'])
-																event['bet'][handicap] = True
-																log.info(bet)
+											event['home'] = period['moneyline']['home']
+											event['away'] = period['moneyline']['away']
 
-										if 'totals' in period.keys() and not event['bet']['total']:
-											for total in period['totals']:
-												if total['points'] == event['total']['value']:
-													event['total']['odds'] = total[event['total']['dirrection']]
-													if 'altLineId' in total.keys():
-														event['total']['altlineid'] = total['altLineId']
-													else:
-														event['total']['altlineid'] = None
-													bet = self.placebet(balancedict['bank'], event['total']['odds'], event['league_id'], event['lineid'], event['id'], 'TOTAL_POINTS', None, event['total']['altlineid'], event['total']['dirrection'].upper())
-													event['bet']['total'] = True
-													log.info(bet)
+											if event['moneyline'] == 'home':
+												two_players = f"{event['p1']} ({event['good_odds']}) - {event['p2']}"
+											else: two_players = f"{event['p1']} - {event['p2']} ({event['good_odds']})"
 
+											msg += f"{event['league']}\n{two_players}\n{event['home']} @ {event['away']}\n\n"
+											event['sended'] = True
+											log.debug(f'Trying to delete event row: {event}')
+											sheet.deleterow(event['index'])
+											log.debug(f'event sended set to True and deleted: {event}')
+		if len(msg) > 0: send_tg(msg)
+		for event in predict:
+			log.debug(f'Time now: {datetime.datetime.utcnow()} / {event["starts"]}')
+			if event['sended'] or datetime.datetime.utcnow() > event['starts']:
+				del event
+				log.debug('Event deleted')
+										
 
 	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None, side=None):
 		teams = {
@@ -353,7 +317,18 @@ class Pinnacle:
 		except Exception:
 			log.critical(f'Get leagues: ', exc_info=True)
 
-
+def send_tg(msg):
+	url = f'https://api.telegram.org/bot{BOTKEY}/sendMessage?chat_id={CHAT}&text={msg}'
+	try:
+		response = requests.get(url)
+		if response.status_code == requests.codes.ok:
+			log.debug('Message sended successfully')
+		else:
+			log.error(f'Message got: {response.status_code}')
+	except requests.exceptions.RequestException as e:
+		log.error(f'Sending: {e}')
+	except ValueError as e:
+		log.error(f'Sending: {response.text}')
 
 if __name__ == '__main__':
 	try:
@@ -362,44 +337,44 @@ if __name__ == '__main__':
 		sheet = Sheets()
 		pin = Pinnacle()
 		TENNIS = 33
-		last = last_odds = None
-		currTime = checkTime = balancetimecheck = datetime.datetime.now()
+		#last = last_odds = None
+		#currTime = checkTime = balancetimecheck = datetime.datetime.now()
 		while True:
 			# Присваивание банка на день в 6:00 UTC
-			if currTime >= balancetimecheck:
-				balancetimecheck.replace(hour=6, minute=00)
-				balancetimecheck += datetime.timedelta(days=1)
-				balance = pin.client_balance()
-				balancedict = {'bank': balance['availableBalance'], 'currency': balance['currency']}
+			#if currTime >= balancetimecheck:
+			#	balancetimecheck.replace(hour=6, minute=00)
+			#	balancetimecheck += datetime.timedelta(days=1)
+			#	balance = pin.client_balance()
+			#	balancedict = {'bank': balance['availableBalance'], 'currency': balance['currency']}
 
 			log.debug('Getting values from Sheets...')
 			sheet.getvalues()
 			log.debug(f'Done. Values: {alexline}')
-			deltaTime = currTime - checkTime
-			if deltaTime.seconds > 61:
-				last = last_odds = None
-				checkTime = datetime.datetime.now()
-			log.debug(f'Getting line since {last}...')
-			line = pin.lines_fixtures(TENNIS, last)
-			# log.debug(f'Done. Fixtures:\n{line}')
-			currTime = datetime.datetime.now()
+			#deltaTime = currTime - checkTime
+			#if deltaTime.seconds > 61:
+			#	last = last_odds = None
+			#	checkTime = datetime.datetime.now()
+			log.debug(f'Getting line...')
+			line = pin.lines_fixtures(TENNIS, None)
+			#log.debug(f'Done. Fixtures:\n{line}')
+			#currTime = datetime.datetime.now()
 
 			if line:
-				last = line['last']
+				#last = line['last']
 				log.debug('Checking exists...')
 				pin.check_exists(alexline, line)
 				log.debug('Done.')
-			log.debug(f'Getting odds since {last_odds}...')
-			odds = pin.lines_odds(TENNIS, last_odds)
-			# log.debug(f'Done. Odds:\n{odds}')
+			log.debug(f'Getting odds...')
+			odds = pin.lines_odds(TENNIS, None)
+			#log.debug(f'Done. Odds:\n{odds}')
 
 			if odds:
-				last_odds = odds['last']
+				#last_odds = odds['last']
 				log.debug('Checking Odds...')
 				pin.check_odds(alexline, odds)
 				log.debug('Done.')
-			log.debug('Sleep for 5 secs')
-			sleep(5)
+			log.debug('Sleep for one minute')
+			sleep(60)
 
 
 	except Exception:
