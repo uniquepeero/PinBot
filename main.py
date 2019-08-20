@@ -13,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 fh.setFormatter(formatter)
@@ -71,7 +71,8 @@ class Sheets:
 
 
 	def deleterow(self, index):
-		return self.sheet.delete_row(index)
+		for i in range(1,5):
+			self.sheet.update_cell(index, i, '')
 
 class Pinnacle:
 	AUTH = ''
@@ -87,7 +88,7 @@ class Pinnacle:
 				CHAT = config['TG']['chat']
 				BOTKEY = config['TG']['API']
 			except Exception as e:
-				log.error(f'[Pinnacle] "KEY" constant with auth key not found: {e}' )
+				log.error(f'Not found: {e}' )
 			try:
 				self.proxydict['main'] = config['Proxy']['Main']
 			except Exception as e:
@@ -239,15 +240,16 @@ class Pinnacle:
 
 											msg += f"{event['league']}\n{two_players}\n{event['home']} @ {event['away']}\n\n"
 											event['sended'] = True
-											log.debug(f'Trying to delete event row: {event}')
 											sheet.deleterow(event['index'])
-											log.debug(f'event sended set to True and deleted: {event}')
-		if len(msg) > 0: send_tg(msg)
-		for event in predict:
-			log.debug(f'Time now: {datetime.datetime.utcnow()} / {event["starts"]}')
+		if len(msg) > 0:
+			send_tg(msg)
+		log.debug('Going through predict dict')
+		for event in predict[:]:
+			log.debug(f'Checking event:\n{event}')
 			if event['sended'] or datetime.datetime.utcnow() > event['starts']:
-				del event
-				log.debug('Event deleted')
+				log.debug('if confirmed, removing...')
+				predict.remove(event)
+				log.debug(f'Event deleted: {predict}')
 										
 
 	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None, side=None):
