@@ -11,13 +11,11 @@ from time import sleep
 from math import log as LOG
 from oauth2client.service_account import ServiceAccountCredentials
 
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
-log.addHandler(fh)
+logging.basicConfig(
+	level = logging.DEBUG, format = '%(asctime)s - %(levelname)s - %(message)s',
+	filename = 'logs.log', filemode = 'w'
+)
+log = logging.getLogger()
 
 CHAT = ''
 BOTKEY = ''
@@ -145,8 +143,12 @@ class Pinnacle:
 					return None
 			else:
 				log.error(f'Lines Fixtures request: Code {res.status_code} / {res.json()}')
-		except Exception:
+		except requests.exceptions.RequestException as e:
 			log.error(f'Get Lines Fixtures: ', exc_info=True)
+			send_tg(e)
+		except ValueError as e:
+			log.error(f'Get Lines Fixtures: ', exc_info=True)
+			send_tg(e)
 
 
 	def lines_odds(self, sportId, since=None, eventIds=None):
@@ -175,10 +177,13 @@ class Pinnacle:
 				else:
 					return None
 			else:
-				log.error(f'Lines Parlay Odds request: Code {res.status_code} / {res.json()}')
-		except Exception:
-			log.critical(f'Get Lines Parlay Odds: ', exc_info=True)
-
+				log.error(f'Lines Odds request: Code {res.status_code} / {res.json()}')
+		except requests.exceptions.RequestException as e:
+			log.error(f'Get Lines Odds: {e}')
+			send_tg(e)
+		except ValueError as e:
+			log.error(f'Get Lines Odds: {res.text} / {e}')
+			send_tg(e)
 
 	def client_balance(self):
 		headers = {
@@ -243,13 +248,9 @@ class Pinnacle:
 											sheet.deleterow(event['index'])
 		if len(msg) > 0:
 			send_tg(msg)
-		log.debug('Going through predict dict')
 		for event in predict[:]:
-			log.debug(f'Checking event:\n{event}')
 			if event['sended'] or datetime.datetime.utcnow() > event['starts']:
-				log.debug('if confirmed, removing...')
 				predict.remove(event)
-				log.debug(f'Event deleted: {predict}')
 										
 
 	def placebet(self, bank, odds, leagueid, lineid, eventid, bettype, team, altlineid=None, side=None):
@@ -356,36 +357,32 @@ if __name__ == '__main__':
 			#if deltaTime.seconds > 61:
 			#	last = last_odds = None
 			#	checkTime = datetime.datetime.now()
-			log.debug(f'Getting line...')
-			line = pin.lines_fixtures(TENNIS, None)
-			#log.debug(f'Done. Fixtures:\n{line}')
-			#currTime = datetime.datetime.now()
+			if alexline:
+				log.debug(f'Getting line...')
+				line = pin.lines_fixtures(TENNIS, None)
+				#log.debug(f'Done. Fixtures:\n{line}')
+				#currTime = datetime.datetime.now()
 
-			if line:
-				#last = line['last']
-				log.debug('Checking exists...')
-				pin.check_exists(alexline, line)
-				log.debug('Done.')
-			log.debug(f'Getting odds...')
-			odds = pin.lines_odds(TENNIS, None)
-			#log.debug(f'Done. Odds:\n{odds}')
+				if line:
+					#last = line['last']
+					log.debug('Checking exists...')
+					pin.check_exists(alexline, line)
+					log.debug('Done.')
+				log.debug(f'Getting odds...')
+				odds = pin.lines_odds(TENNIS, None)
+				#log.debug(f'Done. Odds:\n{odds}')
 
-			if odds:
-				#last_odds = odds['last']
-				log.debug('Checking Odds...')
-				pin.check_odds(alexline, odds)
-				log.debug('Done.')
+				if odds:
+					#last_odds = odds['last']
+					log.debug('Checking Odds...')
+					pin.check_odds(alexline, odds)
+					log.debug('Done.')
 			log.debug('Sleep for one minute')
 			sleep(60)
 
 
-	except Exception:
+	except Exception as e:
 		log.error(f'Main got: ', exc_info=True)
+		send_tg(e)
 	finally:
 		log.info('Closed')
-
-# TODO переписать except
-#TODO Просмотреть и сверить отчет odds. Какие там period number, везде ли 0.
-#TODO Присваивать кэфы для нужных событий (if event['moneyline'] and 'moneyline' in period.keys() and ВОЗМОЖНО not  event['bet']['moneyline']
-# Нашли все кэфы - вызываем функцию проставления. В ней дописать сохранение размера ставки
-# Если есть parentid - сохранять его (Fixtures). Если есть altline в нужных hdp/points в ответе с odds - сохранять их
