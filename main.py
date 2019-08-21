@@ -11,11 +11,13 @@ from time import sleep
 from math import log as LOG
 from oauth2client.service_account import ServiceAccountCredentials
 
-logging.basicConfig(
-	level = logging.DEBUG, format = '%(asctime)s - %(levelname)s - %(message)s',
-	filename = 'logs.log', filemode = 'w'
-)
-log = logging.getLogger()
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+fh = logging.FileHandler("logs.log", 'w', encoding="utf-8")
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+log.addHandler(fh)
 
 CHAT = ''
 BOTKEY = ''
@@ -86,11 +88,7 @@ class Pinnacle:
 				CHAT = config['TG']['chat']
 				BOTKEY = config['TG']['API']
 			except Exception as e:
-				log.error(f'Not found: {e}' )
-			try:
-				self.proxydict['main'] = config['Proxy']['Main']
-			except Exception as e:
-				log.error(f'Proxy not found: {e}')
+				log.error(f'Not found: {e}')
 		else:
 			log.error('config.ini file not found')
 
@@ -99,10 +97,6 @@ class Pinnacle:
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
-		}
-		proxies = {
-			'http': self.proxydict['main'],
-			'https': self.proxydict['main']
 		}
 		try:
 			res = requests.get(f'{self.URL}/v2/sports', headers=headers)
@@ -125,10 +119,6 @@ class Pinnacle:
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
-		}
-		proxies = {
-			'http': self.proxydict['main'],
-			'https': self.proxydict['main']
 		}
 		if since is None:
 			since = ''
@@ -155,10 +145,6 @@ class Pinnacle:
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
-		}
-		proxies = {
-			'http': self.proxydict['main'],
-			'https': self.proxydict['main']
 		}
 		if eventIds is None:
 			events = ''
@@ -189,10 +175,6 @@ class Pinnacle:
 		headers = {
 			'Accept': 'application/json',
 			'Authorization': self.AUTH
-		}
-		proxies = {
-			'http': self.proxydict['main'],
-			'https': self.proxydict['main']
 		}
 		try:
 			res = requests.get(f'{self.URL}/v1/client/balance', headers=headers)
